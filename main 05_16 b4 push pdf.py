@@ -42,7 +42,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Environment flag
-IsProduction = False    # Use web driver
+IsProduction = True    #Use web drivr
+
 UseGrok = False
 
 # Initialize FastAPI app
@@ -307,8 +308,6 @@ def perform_checkout(driver, notional_amount: str, form_data: Dict, queue: async
                                     pdf_content = base64.b64decode(body['body'])
                                 else:
                                     pdf_content = body['body'].encode()
-                                    
-                                # print("pdf_content",pdf_content)    
                                 break
                             except:
                                 pass  # Continue waiting if getting the body fails
@@ -320,9 +319,6 @@ def perform_checkout(driver, notional_amount: str, form_data: Dict, queue: async
                 raise TimeoutException("PDF response not found within timeout")
             
             log_message("PDF檔案從計劃書系統獲取中", queue, loop)
-
-            # Encode PDF content to Base64 for transmission
-            pdf_base64 = base64.b64encode(pdf_content).decode('utf-8')
 
             pdf_file = io.BytesIO(pdf_content)
             with pdfplumber.open(pdf_file) as pdf:
@@ -416,9 +412,7 @@ def perform_checkout(driver, notional_amount: str, form_data: Dict, queue: async
                 "status": "success",
                 "age_1_cash_value": age_1_cash_value,
                 "age_2_cash_value": age_2_cash_value,
-                "annual_premium": annual_premium,
-                "pdf_base64": pdf_base64,
-                "filename": filename + ".pdf"
+                "annual_premium": annual_premium
             }
 
     except TimeoutException as e:
@@ -721,8 +715,8 @@ async def get_data(request: CalculationRequest):
     try:
         print("request.company=", request.company)
         json_file = os.path.join(
-            "plan2/",
-            f"{request.company}/",
+            "plan2/Manulife/",
+            # request.company,
             f"{request.planFileName}.json"
         )
         
