@@ -42,7 +42,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Environment flag
-IsProduction = False    # Use web driver
+IsProduction = True    # Use web driver
 UseGrok = False
 
 # Initialize FastAPI app
