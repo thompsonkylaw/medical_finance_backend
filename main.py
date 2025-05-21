@@ -31,6 +31,7 @@ import re
 from gs import fill_GS_form
 from lv import fill_LV_form
 
+
 load_dotenv()
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
 GROK2_API_KEY = os.getenv("GROK2_API_KEY")
@@ -44,6 +45,7 @@ logger = logging.getLogger(__name__)
 # Environment flag
 IsProduction = True    # Use web driver
 UseGrok = False
+UseAI = True
 
 # Initialize FastAPI app
 app = FastAPI()
@@ -342,66 +344,68 @@ def perform_checkout(driver, notional_amount: str, form_data: Dict, queue: async
             annual_premium = 0
             
             log_message(f"基本儲蓄計劃是={basicPlan_}", queue, loop)
+            if UseAI:
+                system_prompt = (
+                    f"首先幫我在第1頁的資料表中找出第一項基本計劃的投保時每年保費的數值"
+                    f"如果找到的數值是美元,就要使用{currency_rate}匯率轉為港元, 答案就顯示美元及港元 **USDxxxxxx** 及 **HKDxxxxxx**"
+                    f"之後如果計劃是{basicPlan_}幫我在「款項提取說明－退保價值」表格中找出{str(age_1)}歲和{str(age_2)}歲的「款項提取後的退保價值總額(C) + (D)」的數值,"
+                    f"但如果計劃是{basicPlan_}幫我在「款項提取說明－退保價值」表格中找出{str(age_1)}歲和{str(age_2)}歲的「款項提取後的退保價值總額(A) + (B) +(C) + (D)」的數值,"
+                    f"如果找到的數值是美元,就要使用{currency_rate}匯率轉為港元, 答案就顯示美元及港元"
+                    f"答案要儘量簡單直接輸出兩句, 不要隔行:'{str(age_1)}歲的「款項提取後的退保價值總額是 **USDxxxxxx** 及 **HKDxxxxxx**'"
+                    f"'{str(age_2)}歲的「款項提取後的退保價值總額是 **USDxxxxxx** 及 **HKDxxxxxx**',"
+                    "答案要使用點格式"
+                    "數值前面要加上2個*號及HKD, 更加要有','作為貨幣模式"
+                    "最后答案用要講出答案是從哪一頁找到"
+                )
+                messages = [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": text}
+                ]
+                log_message("AI 解讀計劃書中, 請稍後...", queue, loop)
             
-            system_prompt = (
-                f"首先幫我在第1頁的資料表中找出第一項基本計劃的投保時每年保費的數值"
-                f"如果找到的數值是美元,就要使用{currency_rate}匯率轉為港元, 答案就顯示美元及港元 **USDxxxxxx** 及 **HKDxxxxxx**"
-                f"之後如果計劃是{basicPlan_}幫我在「款項提取說明－退保價值」表格中找出{str(age_1)}歲和{str(age_2)}歲的「款項提取後的退保價值總額(C) + (D)」的數值,"
-                f"但如果計劃是{basicPlan_}幫我在「款項提取說明－退保價值」表格中找出{str(age_1)}歲和{str(age_2)}歲的「款項提取後的退保價值總額(A) + (B) +(C) + (D)」的數值,"
-                f"如果找到的數值是美元,就要使用{currency_rate}匯率轉為港元, 答案就顯示美元及港元"
-                f"答案要儘量簡單直接輸出兩句, 不要隔行:'{str(age_1)}歲的「款項提取後的退保價值總額是 **USDxxxxxx** 及 **HKDxxxxxx**'"
-                f"'{str(age_2)}歲的「款項提取後的退保價值總額是 **USDxxxxxx** 及 **HKDxxxxxx**',"
-                "答案要使用點格式"
-                "數值前面要加上2個*號及HKD, 更加要有','作為貨幣模式"
-                "最后答案用要講出答案是從哪一頁找到"
-            )
-            messages = [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": text}
-            ]
-            log_message("AI 解讀計劃書中, 請稍後...", queue, loop)
             
-            if UseGrok:
-                api_key = GROK2_API_KEY
-                base_url="https://api.x.ai/v1"
-                model = "grok-3-beta"
-                log_message(f"AI模型=X", queue, loop)
-            else: 
-                api_key = DEEPSEEK_API_KEY   
-                base_url="https://api.deepseek.com"
-                model = "deepseek-chat"
-                log_message(f"AI模型C使用中", queue, loop)
+                if UseGrok:
+                    api_key = GROK2_API_KEY
+                    base_url="https://api.x.ai/v1"
+                    model = "grok-3-beta"
+                    log_message(f"AI模型=X", queue, loop)
+                else: 
+                    api_key = DEEPSEEK_API_KEY   
+                    base_url="https://api.deepseek.com"
+                    model = "deepseek-chat"
+                    log_message(f"AI模型C使用中", queue, loop)
             
-            client = OpenAI(api_key=api_key, base_url=base_url)
-            response = client.chat.completions.create(
-                model=model,
-                messages=messages,
-            )
-            ai_response = response.choices[0].message.content
-            
-            print("currency_rate",currency_rate)
-            print("ai_response",ai_response)
-            pattern = r'(?:HK?D?|K)\s*(\d[\d,]*)' 
-            matches = re.findall(pattern, ai_response)
-            
-            if len(matches) >= 3:
-                annual_premium =   int(matches[0].replace(',', ''))
-                age_1_cash_value = int(matches[1].replace(',', ''))
-                age_2_cash_value = int(matches[2].replace(',', ''))
+                client = OpenAI(api_key=api_key, base_url=base_url)
+                response = client.chat.completions.create(
+                    model=model,
+                    messages=messages,
+                )
+                ai_response = response.choices[0].message.content
+                
+                print("currency_rate",currency_rate)
+                print("ai_response",ai_response)
+                pattern = r'(?:HK?D?|K)\s*(\d[\d,]*)' 
+                matches = re.findall(pattern, ai_response)
+                
+                if len(matches) >= 3:
+                    annual_premium =   int(matches[0].replace(',', ''))
+                    age_1_cash_value = int(matches[1].replace(',', ''))
+                    age_2_cash_value = int(matches[2].replace(',', ''))
+                else:
+                    log_message("未能從AI回應中提取足夠的HKD值", queue, loop)
+                    annual_premium = 0
+                    age_1_cash_value = 0
+                    age_2_cash_value = 0
+                    
+                log_message(f"投保時每年保費={annual_premium}", queue, loop)
+                log_message(f"age_1_退保價值總額={age_1_cash_value}", queue, loop)
+                log_message(f"age_2_退保價值總額={age_2_cash_value}", queue, loop)
+                
+                lines = ai_response.splitlines()
+                for line in lines:
+                    log_message(f"AI 回覆 : {line}", queue, loop)
             else:
-                log_message("未能從AI回應中提取足夠的HKD值", queue, loop)
-                annual_premium = 0
-                age_1_cash_value = 0
-                age_2_cash_value = 0
-                
-            log_message(f"投保時每年保費={annual_premium}", queue, loop)
-            log_message(f"age_1_退保價值總額={age_1_cash_value}", queue, loop)
-            log_message(f"age_2_退保價值總額={age_2_cash_value}", queue, loop)
-            
-            lines = ai_response.splitlines()
-            for line in lines:
-                log_message(f"AI 回覆 : {line}", queue, loop)
-                
+                log_message(f"AI Bypassed", queue, loop)    
             log_message("建議書已成功建立及下載到計劃書系統中!", queue, loop)
 
             # Stop timer and log elapsed time
