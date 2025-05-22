@@ -125,6 +125,38 @@ def log_message(message: str, queue: asyncio.Queue, loop: asyncio.AbstractEventL
     else:
         print(message)
     asyncio.run_coroutine_threadsafe(queue.put(message), loop)
+class TerminateSessionRequest(BaseModel):
+    session_id: str
+
+@app.post("/terminate-session")
+async def terminate_session(request: TerminateSessionRequest):
+    print(f"Received terminate request for session: {request.session_id}")
+    print("Current sessions:", list(sessions.keys()))
+    
+    session_data = sessions.get(request.session_id)
+    if session_data:
+        print(f"Session data found: {session_data}")
+        if "driver" in session_data:
+            driver = session_data["driver"]
+            print("Driver object:", driver)
+            try:
+                # Optional: Check driver state (e.g., current URL)
+                print("Driver current URL before quit:", driver.current_url)
+                driver.quit()
+                print(f"Driver quit successfully for session {request.session_id}")
+            except Exception as e:
+                print(f"Error quitting driver for session {request.session_id}: {type(e).__name__} - {str(e)}")
+            finally:
+                sessions.pop(request.session_id, None)
+                session_queues.pop(request.session_id, None)
+                print(f"Cleaned up session {request.session_id}")
+                return {"status": "terminated"}
+        else:
+            print("No driver found in session data")
+            return {"status": "no_driver"}
+    else:
+        print(f"Session {request.session_id} not found")
+        raise HTTPException(status_code=404, detail="Session not found")
 
 # Selenium worker for initial login
 def selenium_worker(session_id: str, url: str, username: str, password: str, queue: asyncio.Queue, loop: asyncio.AbstractEventLoop):
@@ -147,7 +179,13 @@ def selenium_worker(session_id: str, url: str, username: str, password: str, que
             driver = webdriver.Chrome(options=options)
 
         driver.get(url)
-
+        
+       
+        
+        print("updated session_id",session_id)
+        
+        sessions[session_id] = {"driver": driver}
+        print("updated session_data['driver']",sessions[session_id]['driver'])
         login_field = WebDriverWait(driver, TIMEOUT).until(
             EC.visibility_of_element_located((By.ID, "user"))
         )
@@ -171,15 +209,24 @@ def selenium_worker(session_id: str, url: str, username: str, password: str, que
         )
         sendOtpRequestButton.click()
         log_message("一次性密碼從電郵發放中...", queue, loop)
-
-        sessions[session_id] = {"driver": driver}
+        
+        
     except Exception as e:
-        log_message(f"Selenium error: {str(e)}", queue, loop)
+        # log_message(f"Selenium error: {str(e)}", queue, loop)
+        print("kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk")
         if session_id in sessions:
-            driver = sessions.pop(session_id).get("driver")
-            if driver:
+            print("yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy")
+            print("session_data['driver']", sessions["driver"])
+            
+            driver = sessions["driver"]
+            try:
                 driver.quit()
-        raise
+               
+            except Exception as e:
+                print(f"Error quitting driver for session ")
+  
+        else:
+            raise HTTPException(status_code=404, detail="Session not found")    
 
 # Helper function to perform checkout and capture PDF from network
 def perform_checkout(driver, notional_amount: str, form_data: Dict, queue: asyncio.Queue, loop: asyncio.AbstractEventLoop, calculation_data: Dict, cash_value_info: Dict, session_id: str):

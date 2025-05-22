@@ -440,6 +440,7 @@ def fill_LV_form(driver, form_data, calculation_data, log_func, TIMEOUT=120):
     except Exception as e:
         print(f"Error finding input element: {e}")
         log_func(f"Error finding input element: {e}")
+        driver.quit()
         raise
 
     if not form_data['useInflation']:
