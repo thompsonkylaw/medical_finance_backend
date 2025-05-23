@@ -169,6 +169,7 @@ def selenium_worker(session_id: str, url: str, username: str, password: str, que
         prefs = {
             "download.prompt_for_download": False,
             "plugins.always_open_pdf_externally": True,
+            "profile.managed_default_content_settings.images": 2
         }
         options.add_experimental_option("prefs", prefs)
 
