@@ -419,7 +419,7 @@ def perform_checkout(driver, notional_amount: str, form_data: Dict, queue: async
                 else: 
                     api_key = DEEPSEEK_API_KEY   
                     base_url="https://api.deepseek.com"
-                    model = "deepseek-chat"
+                    model = "deepseek-reasoner"
                     log_message(f"AI模型C使用中", queue, loop)
             
                 client = OpenAI(api_key=api_key, base_url=base_url)
