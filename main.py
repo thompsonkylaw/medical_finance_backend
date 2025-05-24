@@ -47,7 +47,7 @@ logger = logging.getLogger(__name__)
 IsProduction = True    # Use web driver
 UseGrok = True
 UseAI = True
-UseNetworkResponse = False
+UseNetworkResponse = True
 
 # Initialize FastAPI app
 app = FastAPI()
@@ -517,7 +517,7 @@ def perform_checkout(driver, notional_amount: str, form_data: Dict, queue: async
             elapsed_time = end_time - start_time
             minutes, seconds = divmod(elapsed_time, 60)
             timer_value = f"{int(minutes):02d}:{int(seconds):02d}"
-            log_message(f"v1.0 所需時間 = {timer_value}", queue, loop)
+            log_message(f"所需時間 = {timer_value}", queue, loop)
 
             return {
                 "status": "success",
