@@ -30,6 +30,7 @@ import shutil
 import re
 from gs import fill_GS_form
 from lv import fill_LV_form
+from pdfminer.high_level import extract_text
 
 
 load_dotenv()
@@ -44,8 +45,9 @@ logger = logging.getLogger(__name__)
 
 # Environment flag
 IsProduction = True    # Use web driver
-UseGrok = False
+UseGrok = True
 UseAI = True
+UseNetworkResponse = False
 
 # Initialize FastAPI app
 app = FastAPI()
@@ -165,11 +167,13 @@ def selenium_worker(session_id: str, url: str, username: str, password: str, que
         options.add_argument('--no-sandbox')
         options.add_argument('--disable-dev-shm-usage')
         options.add_argument("--disable-gpu")
-        options.set_capability('goog:loggingPrefs', {'performance': 'ALL'})
+        if UseNetworkResponse is True:
+            options.set_capability('goog:loggingPrefs', {'performance': 'ALL'})
         prefs = {
             "download.prompt_for_download": False,
-            "plugins.always_open_pdf_externally": True,
-            "profile.managed_default_content_settings.images": 2
+            "plugins.always_open_pdf_externally": False,
+            "profile.managed_default_content_settings.images": 2,
+            "profile.default_content_setting_values.popups": 1
         }
         options.add_experimental_option("prefs", prefs)
 
@@ -337,51 +341,100 @@ def perform_checkout(driver, notional_amount: str, form_data: Dict, queue: async
             
             log_message("列印中, 請稍後..." , queue, loop)
             
-            # Wait for PDF response
-            pdf_request_id = None
-            pdf_content = None
-            start_time = time.time()
-            polling_interval = 0.5  # seconds
+            if UseNetworkResponse is True:
+                # Wait for PDF response
+                pdf_request_id = None
+                pdf_content = None
+                start_time = time.time()
+                polling_interval = 0.5  # seconds
 
-            while time.time() - start_time < 60:
-                logs = driver.get_log('performance')
-                for log in logs:
-                    message = json.loads(log['message'])['message']
-                    if message['method'] == 'Network.responseReceived':
-                        response = message['params']['response']
-                        if response['mimeType'] == 'application/pdf':
-                            pdf_request_id = message['params']['requestId']
-                    elif message['method'] == 'Network.loadingFinished' and pdf_request_id is not None:
-                        if message['params']['requestId'] == pdf_request_id:
-                            try:
-                                body = driver.execute_cdp_cmd('Network.getResponseBody', {'requestId': pdf_request_id})
-                                if body['base64Encoded']:
-                                    pdf_content = base64.b64decode(body['body'])
-                                else:
-                                    pdf_content = body['body'].encode()
-                                    
-                                # print("pdf_content",pdf_content)    
-                                break
-                            except:
-                                pass  # Continue waiting if getting the body fails
-                if pdf_content:
-                    break
-                time.sleep(polling_interval)
+                while time.time() - start_time < 60:
+                    logs = driver.get_log('performance')
+                    for log in logs:
+                        message = json.loads(log['message'])['message']
+                        if message['method'] == 'Network.responseReceived':
+                            response = message['params']['response']
+                            if response['mimeType'] == 'application/pdf':
+                                pdf_request_id = message['params']['requestId']
+                        elif message['method'] == 'Network.loadingFinished' and pdf_request_id is not None:
+                            if message['params']['requestId'] == pdf_request_id:
+                                try:
+                                    body = driver.execute_cdp_cmd('Network.getResponseBody', {'requestId': pdf_request_id})
+                                    if body['base64Encoded']:
+                                        pdf_content = base64.b64decode(body['body'])
+                                    else:
+                                        pdf_content = body['body'].encode()
+                                        
+                                    # print("pdf_content",pdf_content)    
+                                    break
+                                except:
+                                    pass  # Continue waiting if getting the body fails
+                    if pdf_content:
+                        break
+                    time.sleep(polling_interval)
 
-            if pdf_content is None:
-                raise TimeoutException("PDF response not found within timeout")
+                if pdf_content is None:
+                    raise TimeoutException("PDF response not found within timeout")
+                
+                log_message("PDF檔案從計劃書系統獲取中", queue, loop)
+
+                # Encode PDF content to Base64 for transmission
+                pdf_base64 = base64.b64encode(pdf_content).decode('utf-8')
+
+                pdf_file = io.BytesIO(pdf_content)
+                with pdfplumber.open(pdf_file) as pdf:
+                    text = ""
+                    for page in pdf.pages:
+                        text += page.extract_text() or ""
+                log_message("從PDF檔案中提取文本內容", queue, loop)
             
-            log_message("PDF檔案從計劃書系統獲取中", queue, loop)
-
-            # Encode PDF content to Base64 for transmission
-            pdf_base64 = base64.b64encode(pdf_content).decode('utf-8')
-
-            pdf_file = io.BytesIO(pdf_content)
-            with pdfplumber.open(pdf_file) as pdf:
-                text = ""
-                for page in pdf.pages:
-                    text += page.extract_text() or ""
-            log_message("從PDF檔案中提取文本內容", queue, loop)
+            
+            else:
+                print("here0")
+                original_window = driver.current_window_handle
+                WebDriverWait(driver, 30).until(lambda d: len(d.window_handles) > 1)
+                print("here1")
+                all_handles = driver.window_handles
+                pdf_base64 = None
+                pdf_window_handle = None
+                for handle in all_handles:
+                    if handle != original_window:
+                        print("here2")
+                        driver.switch_to.window(handle)
+                        current_url = driver.current_url
+                        # if current_url.endswith(".pdf"):
+                        if "blob" in current_url:  
+                            print("here3")
+                            pdf_window_handle = handle
+                            
+                            # JavaScript to fetch the blob and convert it to base64
+                            script = """
+                            var callback = arguments[arguments.length - 1];
+                            fetch(window.location.href)
+                            .then(response => response.blob())
+                            .then(blob => {
+                                var reader = new FileReader();
+                                reader.readAsDataURL(blob);
+                                reader.onloadend = function() {
+                                var base64data = reader.result.split(',')[1];
+                                callback(base64data);
+                                }
+                            });
+                            """
+                            
+                            # Execute the async script to get the base64-encoded PDF
+                            base64_pdf = driver.execute_async_script(script)
+                
+                            # Decode base64 to bytes
+                            pdf_bytes = base64.b64decode(base64_pdf)
+                            
+                            # Process the PDF
+                            pdf_file = io.BytesIO(pdf_bytes)
+                            text = extract_text(pdf_file)
+                            pdf_base64 = base64.b64encode(pdf_bytes).decode('utf-8')  # If you still need base64
+                            log_message("從PDF檔案中提取文本內容", queue, loop)
+                            
+                            break
 
             age_1 = cash_value_info['age_1']
             age_2 = cash_value_info['age_2']
