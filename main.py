@@ -175,8 +175,8 @@ def selenium_worker(session_id: str, url: str, username: str, password: str, que
 
         if IsProduction:
             options.add_argument('--headless')
-            # driver = webdriver.Remote(command_executor='https://standalone-chrome-production-57ca.up.railway.app', options=options)
-            driver = webdriver.Remote(command_executor='standalone-chrome.railway.internal', options=options)
+            driver = webdriver.Remote(command_executor='https://standalone-chrome-production-57ca.up.railway.app', options=options)
+            # driver = webdriver.Remote(command_executor='standalone-chrome.railway.internal', options=options)
             # driver = webdriver.Remote(command_executor='http://216.250.97.169:4444', options=options)
         else:
             driver = webdriver.Chrome(options=options)
