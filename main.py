@@ -169,6 +169,7 @@ def selenium_worker(session_id: str, url: str, username: str, password: str, que
         options.add_argument("--disable-gpu")
         if UseNetworkResponse is True:
             options.set_capability('goog:loggingPrefs', {'performance': 'ALL'})
+            log_message("使用網路回應", queue, loop)
         prefs = {
             "download.prompt_for_download": False,
             "plugins.always_open_pdf_externally": False,
@@ -518,7 +519,7 @@ def perform_checkout(driver, notional_amount: str, form_data: Dict, queue: async
             minutes, seconds = divmod(elapsed_time, 60)
             timer_value = f"{int(minutes):02d}:{int(seconds):02d}"
             log_message(f"所需時間 = {timer_value}", queue, loop)
-
+            
             return {
                 "status": "success",
                 "age_1_cash_value": age_1_cash_value,
