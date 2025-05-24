@@ -45,7 +45,7 @@ logger = logging.getLogger(__name__)
 
 # Environment flag
 IsProduction = True    # Use web driver
-UseGrok = True
+UseGrok = False
 UseAI = True
 UseNetworkResponse = True
 
